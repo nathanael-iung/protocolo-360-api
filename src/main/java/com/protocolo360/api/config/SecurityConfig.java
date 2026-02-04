@@ -9,10 +9,16 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+
+import lombok.RequiredArgsConstructor;
 
 @Configuration
 @EnableWebSecurity
+@RequiredArgsConstructor
 public class SecurityConfig {
+
+    private final SecurityFilter securityFilter;
 
     @Bean
     public PasswordEncoder passwordEncoder() {
@@ -27,15 +33,16 @@ public class SecurityConfig {
                 opt.setAllowedOrigins(java.util.List.of("http://localhost:4200")); // Your Angular App
                 opt.setAllowedMethods(java.util.List.of("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"));
                 opt.setAllowedHeaders(java.util.List.of("*"));
+                opt.setAllowCredentials(true);
                 return opt;
             }))
             .csrf(AbstractHttpConfigurer::disable) // Disabled for stateless APIs
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/status").permitAll()
                 .requestMatchers("/api/v1/auth/**").permitAll() // Allow register/login
                 .anyRequest().authenticated()
-            );
+            )
+            .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class);
         
         return http.build();
     }
