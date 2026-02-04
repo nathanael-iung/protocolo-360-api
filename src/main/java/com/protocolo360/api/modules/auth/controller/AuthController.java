@@ -14,8 +14,11 @@ import com.protocolo360.api.modules.auth.dto.LoginResponse;
 import com.protocolo360.api.modules.auth.dto.RegisterRequest;
 import com.protocolo360.api.modules.auth.model.User;
 import com.protocolo360.api.modules.auth.service.AuthService;
+import com.protocolo360.api.modules.auth.service.JwtService;
 import com.protocolo360.api.shared.dto.ApiResponse;
+import com.protocolo360.api.shared.exception.BusinessException;
 
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -25,34 +28,59 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 public class AuthController {
     private final AuthService authService;
+    private final JwtService jwtService;
 
     @PostMapping("/register")
     public ResponseEntity<ApiResponse<User>> register(@Valid @RequestBody RegisterRequest request) {
         User savedUser = authService.registerUser(request);
-        
+
         return ResponseEntity.status(HttpStatus.CREATED).body(
-            ApiResponse.success(savedUser, "User registered successfully", 201)
-        );
+                ApiResponse.success(savedUser, "User registered successfully", 201));
     }
 
     @PostMapping("/login")
-public ResponseEntity<ApiResponse<Void>> login(
-        @Valid @RequestBody LoginRequest request, 
-        HttpServletResponse response) {
-    
-    LoginResponse loginData = authService.authenticate(request);
-    
-    // Create the Cookie
-    ResponseCookie cookie = ResponseCookie.from("protocolo360_auth", loginData.token())
-            .httpOnly(true)       // Prevents JS access (No XSS)
-            .secure(false)       // Set to 'true' in production (requires HTTPS)
-            .path("/")           // Available for all routes
-            .maxAge(24 * 60 * 60) // 24 hours
-            .sameSite("Strict")  // Prevents CSRF
-            .build();
+    public ResponseEntity<ApiResponse<Void>> login(
+            @Valid @RequestBody LoginRequest request,
+            HttpServletResponse response) {
 
-    response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        LoginResponse loginData = authService.authenticate(request);
 
-    return ResponseEntity.ok(ApiResponse.success(null, "Login successful", 200));
-}
+        addAuthCookie(response, loginData.token(), 24 * 60 * 60); // 1 day expiry
+        
+        return ResponseEntity.ok(ApiResponse.success(null, "Login successful", 200));
+    }
+
+    @PostMapping("/logout")
+    public ResponseEntity<ApiResponse<Void>> logout(HttpServletResponse response) {
+        addAuthCookie(response, "", 0);
+        return ResponseEntity.ok(ApiResponse.success(null, "Logged out successfully", 200));
+    }
+
+    @PostMapping("/refresh")
+    public ResponseEntity<ApiResponse<Void>> refresh(HttpServletRequest request, HttpServletResponse response) {
+        String token = jwtService.recoverToken(request); // Reuse your recovery logic
+
+        if (token == null) {
+            throw new BusinessException("No session cookie found", HttpStatus.UNAUTHORIZED);
+        }
+
+        String newToken = jwtService.refreshToken(token);
+
+        if (newToken == null) {
+            throw new BusinessException("Session expired, please login again", HttpStatus.UNAUTHORIZED);
+        }
+        addAuthCookie(response, newToken, 24 * 60 * 60); // 1 day expiry
+        return ResponseEntity.ok(ApiResponse.success(null, "Token refreshed", 200));
+    }
+
+    private void addAuthCookie(HttpServletResponse response, String token, int maxAge) {
+        ResponseCookie cookie = ResponseCookie.from("protocolo360_auth", token)
+                .httpOnly(true)
+                .secure(false) // Remember to use 'true' in production
+                .path("/")
+                .maxAge(maxAge)
+                .sameSite("Lax")
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+    }
 }
