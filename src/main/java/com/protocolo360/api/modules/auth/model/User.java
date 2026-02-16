@@ -1,12 +1,15 @@
 package com.protocolo360.api.modules.auth.model;
 
+import com.protocolo360.api.modules.goal.model.Goal;
 import com.protocolo360.api.shared.domain.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
 
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
@@ -38,10 +41,13 @@ public class User extends BaseEntity implements UserDetails {
     private String phone;
     private String gender;
 
-    @ElementCollection
-    @CollectionTable(name = "user_goals", joinColumns = @JoinColumn(name = "user_id"))
-    @Column(name = "goal", nullable = false)
-    private List<String> goals;
+    @ManyToMany
+    @JoinTable(
+        name = "user_goals",
+        joinColumns = @JoinColumn(name = "user_id"),
+        inverseJoinColumns = @JoinColumn(name = "goal_id")
+    )
+    private Set<Goal> goals = new HashSet<>();
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

@@ -4,7 +4,6 @@ import com.protocolo360.api.modules.auth.repository.UserRepository;
 import com.protocolo360.api.modules.auth.service.JwtService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
-import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
