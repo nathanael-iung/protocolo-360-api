@@ -1,9 +1,15 @@
 package com.protocolo360.api.modules.auth.controller;
 
+import java.util.Set;
+import java.util.stream.Collectors;
+
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -12,6 +18,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.protocolo360.api.modules.auth.dto.LoginRequest;
 import com.protocolo360.api.modules.auth.dto.LoginResponse;
 import com.protocolo360.api.modules.auth.dto.RegisterRequest;
+import com.protocolo360.api.modules.auth.dto.TokenMetadata;
 import com.protocolo360.api.modules.auth.model.User;
 import com.protocolo360.api.modules.auth.service.AuthService;
 import com.protocolo360.api.modules.auth.service.JwtService;
@@ -39,15 +46,15 @@ public class AuthController {
     }
 
     @PostMapping("/login")
-    public ResponseEntity<ApiResponse<Void>> login(
+    public ResponseEntity<ApiResponse<LoginResponse>> login(
             @Valid @RequestBody LoginRequest request,
             HttpServletResponse response) {
 
-        LoginResponse loginData = authService.authenticate(request);
+        LoginResponse loginResponse = authService.authenticate(request);
 
-        addAuthCookie(response, loginData.token(), 24 * 60 * 60); // 1 day expiry
-        
-        return ResponseEntity.ok(ApiResponse.success(null, "Login successful", 200));
+        addAuthCookie(response, loginResponse.email(), 24 * 60 * 60);
+
+        return ResponseEntity.ok(ApiResponse.success(loginResponse, "User Logged In", 200));
     }
 
     @PostMapping("/logout")
@@ -57,20 +64,36 @@ public class AuthController {
     }
 
     @PostMapping("/refresh")
-    public ResponseEntity<ApiResponse<Void>> refresh(HttpServletRequest request, HttpServletResponse response) {
+    public ResponseEntity<ApiResponse<LoginResponse>> refresh(HttpServletRequest request,
+            HttpServletResponse response) {
         String token = jwtService.recoverToken(request); // Reuse your recovery logic
 
         if (token == null) {
             throw new BusinessException("No session cookie found", HttpStatus.UNAUTHORIZED);
         }
 
-        String newToken = jwtService.refreshToken(token);
+        TokenMetadata newTokenMetadata = jwtService.refreshToken(token);
 
-        if (newToken == null) {
+        if (newTokenMetadata == null) {
             throw new BusinessException("Session expired, please login again", HttpStatus.UNAUTHORIZED);
         }
-        addAuthCookie(response, newToken, 24 * 60 * 60); // 1 day expiry
-        return ResponseEntity.ok(ApiResponse.success(null, "Token refreshed", 200));
+
+        addAuthCookie(response, newTokenMetadata.token(), 24 * 60 * 60); // 1 day expiry
+
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        String email = auth.getName();
+
+        Set<String> roles = auth.getAuthorities().stream()
+                .map(GrantedAuthority::getAuthority)
+                .collect(Collectors.toSet());
+
+        LoginResponse loginResponse = new LoginResponse(
+                email,
+                roles,
+                newTokenMetadata.issuedAt(),
+                newTokenMetadata.expiresAt());
+
+        return ResponseEntity.ok(ApiResponse.success(loginResponse, "Token refreshed", 200));
     }
 
     private void addAuthCookie(HttpServletResponse response, String token, int maxAge) {

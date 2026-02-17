@@ -8,10 +8,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import com.protocolo360.api.modules.auth.dto.TokenMetadata;
+
 import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.Arrays;
 import java.util.Date;
 
@@ -21,15 +22,24 @@ public class JwtService {
     @Value("${TOKEN_SECRET}")
     private String secret;
 
-    public String generateToken(String email) {
-        SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    private SecretKey getSigningKey() {
+        return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
+    }
 
-        return Jwts.builder()
+    public TokenMetadata generateToken(String email) {
+
+        long now = System.currentTimeMillis();
+        long expirationTime = 86400000; // 24 hours
+        long expiry = now + expirationTime;
+
+        String token = Jwts.builder()
                 .subject(email)
-                .issuedAt(Date.from(Instant.now()))
-                .expiration(Date.from(Instant.now().plus(24, ChronoUnit.HOURS)))
-                .signWith(key)
+                .issuedAt(Date.from(Instant.ofEpochMilli(now)))
+                .expiration(Date.from(Instant.ofEpochMilli(expiry)))
+                .signWith(getSigningKey())
                 .compact();
+                
+        return new TokenMetadata(token, now, expiry);
     }
 
     public String validateToken(String token) {
@@ -42,14 +52,13 @@ public class JwtService {
                     .getPayload()
                     .getSubject();
         } catch (Exception e) {
-            return null; // Token invalid or expired
+            return null;
         }
     }
 
-    public String refreshToken(String token) {
+    public TokenMetadata refreshToken(String token) {
         String email = validateToken(token);
-        if (email == null)
-            return null;
+        if (email == null) return null;
 
         return generateToken(email);
     }

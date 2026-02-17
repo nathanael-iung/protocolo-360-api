@@ -1,6 +1,7 @@
 package com.protocolo360.api.modules.auth.model;
 
 import com.protocolo360.api.modules.goal.model.Goal;
+import com.protocolo360.api.modules.roles.model.Role;
 import com.protocolo360.api.shared.domain.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
@@ -42,16 +43,18 @@ public class User extends BaseEntity implements UserDetails {
     private String gender;
 
     @ManyToMany
-    @JoinTable(
-        name = "user_goals",
-        joinColumns = @JoinColumn(name = "user_id"),
-        inverseJoinColumns = @JoinColumn(name = "goal_id")
-    )
+    @JoinTable(name = "user_goals", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "goal_id"))
     private Set<Goal> goals = new HashSet<>();
+
+    @ManyToMany(fetch = FetchType.EAGER)
+    @JoinTable(name = "user_roles", joinColumns = @JoinColumn(name = "user_id"), inverseJoinColumns = @JoinColumn(name = "role_id"))
+    private Set<Role> roles = new HashSet<>();
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
-        return List.of(new SimpleGrantedAuthority("STANDARD_USER"));
+        return roles.stream()
+                .map(role -> new SimpleGrantedAuthority(role.getName()))
+                .toList();
     }
 
     @Override
