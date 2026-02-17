@@ -22,7 +22,7 @@ public class SecurityConfig {
 
     @Bean
     public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder(); // Default strength is 10
+        return new BCryptPasswordEncoder();
     }
 
     @Bean
@@ -39,7 +39,8 @@ public class SecurityConfig {
             .csrf(AbstractHttpConfigurer::disable) // Disabled for stateless APIs
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/v1/auth/**").permitAll() // Allow register/login
+                .requestMatchers("/api/v1/auth/**").permitAll()
+                .requestMatchers("/api/v1/goal/goals").permitAll()
                 .anyRequest().authenticated()
             )
             .addFilterBefore(securityFilter, UsernamePasswordAuthenticationFilter.class);
