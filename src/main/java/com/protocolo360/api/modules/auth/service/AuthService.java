@@ -8,6 +8,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
+import com.protocolo360.api.modules.auth.dto.AuthResult;
 import com.protocolo360.api.modules.auth.dto.LoginRequest;
 import com.protocolo360.api.modules.auth.dto.LoginResponse;
 import com.protocolo360.api.modules.auth.dto.RegisterRequest;
@@ -25,57 +26,59 @@ import lombok.RequiredArgsConstructor;
 @Service
 @RequiredArgsConstructor
 public class AuthService {
-    private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder;
-    private final JwtService jwtService;
-    private final GoalRepository goalRepository;
-    private final RoleRepository roleRepository;
+        private final UserRepository userRepository;
+        private final PasswordEncoder passwordEncoder;
+        private final JwtService jwtService;
+        private final GoalRepository goalRepository;
+        private final RoleRepository roleRepository;
 
-    public User registerUser(RegisterRequest request) {
-        if (userRepository.findByEmail(request.email()).isPresent()) {
-            throw new BusinessException("This email is already registered.", HttpStatus.CONFLICT);
+        public User registerUser(RegisterRequest request) {
+                if (userRepository.findByEmail(request.email()).isPresent()) {
+                        throw new BusinessException("This email is already registered.", HttpStatus.CONFLICT);
+                }
+
+                Set<Goal> userGoals = request.goals().stream()
+                                .map(goalId -> goalRepository.findById(goalId)
+                                                .orElseThrow(() -> new BusinessException("Goal not found: " + goalId,
+                                                                HttpStatus.BAD_REQUEST)))
+                                .collect(Collectors.toSet());
+
+                Role standardRole = roleRepository.findByName("STANDARD")
+                                .orElseThrow(() -> new BusinessException("Default role not found",
+                                                HttpStatus.INTERNAL_SERVER_ERROR));
+
+                User user = User.builder()
+                                .fullName(request.fullName())
+                                .email(request.email())
+                                .passwordHash(passwordEncoder.encode(request.password()))
+                                .birthDate(request.birthDate())
+                                .phone(request.phone())
+                                .gender(request.gender())
+                                .goals(userGoals)
+                                .roles(new HashSet<>(Set.of(standardRole)))
+                                .build();
+
+                return userRepository.save(user);
         }
 
-        Set<Goal> userGoals = request.goals().stream()
-                .map(goalId -> goalRepository.findById(goalId)
-                        .orElseThrow(() -> new BusinessException("Goal not found: " + goalId, HttpStatus.BAD_REQUEST)))
-                .collect(Collectors.toSet());
+        public AuthResult authenticate(LoginRequest request) {
+                var user = userRepository.findByEmail(request.email())
+                                .orElseThrow(() -> new BusinessException("Invalid credentials",
+                                                HttpStatus.UNAUTHORIZED));
 
-        Role standardRole = roleRepository.findByName("STANDARD")
-                .orElseThrow(() -> new BusinessException("Default role not found", HttpStatus.INTERNAL_SERVER_ERROR));
+                if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
+                        throw new BusinessException("Invalid credentials", HttpStatus.UNAUTHORIZED);
+                }
 
-        User user = User.builder()
-                .fullName(request.fullName())
-                .email(request.email())
-                .passwordHash(passwordEncoder.encode(request.password()))
-                .birthDate(request.birthDate())
-                .phone(request.phone())
-                .gender(request.gender())
-                .goals(userGoals)
-                .roles(new HashSet<>(Set.of(standardRole)))
-                .build();
+                Set<String> roles = user.getRoles().stream()
+                                .map(role -> role.getName().toUpperCase().trim())
+                                .collect(Collectors.toSet());
 
-        return userRepository.save(user);
-    }
+                TokenMetadata tokenData = jwtService.generateToken(user.getEmail(), roles);
 
-    public LoginResponse authenticate(LoginRequest request) {
-        var user = userRepository.findByEmail(request.email())
-                .orElseThrow(() -> new BusinessException("Invalid credentials", HttpStatus.UNAUTHORIZED));
+                LoginResponse dto = new LoginResponse(user.getEmail(), roles, tokenData.issuedAt(),
+                                tokenData.expiresAt());
 
-        if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
-            throw new BusinessException("Invalid credentials", HttpStatus.UNAUTHORIZED);
+                return new AuthResult(dto, tokenData.token());
         }
-
-        TokenMetadata tokenData = jwtService.generateToken(user.getEmail());
-
-        Set<String> roles = user.getRoles().stream()
-                .map(Role::getName)
-                .collect(Collectors.toSet());
-
-        return new LoginResponse(
-                user.getEmail(),
-                roles,
-                tokenData.issuedAt(),
-                tokenData.expiresAt());
-    }
 }

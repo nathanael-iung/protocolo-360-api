@@ -1,5 +1,6 @@
 package com.protocolo360.api.modules.auth.service;
 
+import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import jakarta.servlet.http.Cookie;
@@ -15,6 +16,9 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 @Service
 public class JwtService {
@@ -26,27 +30,26 @@ public class JwtService {
         return Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
     }
 
-    public TokenMetadata generateToken(String email) {
-
+    public TokenMetadata generateToken(String email, Set<String> roles) {
         long now = System.currentTimeMillis();
         long expirationTime = 86400000; // 24 hours
         long expiry = now + expirationTime;
 
         String token = Jwts.builder()
                 .subject(email)
+                .claim("roles", roles)
                 .issuedAt(Date.from(Instant.ofEpochMilli(now)))
                 .expiration(Date.from(Instant.ofEpochMilli(expiry)))
                 .signWith(getSigningKey())
                 .compact();
-                
+
         return new TokenMetadata(token, now, expiry);
     }
 
     public String validateToken(String token) {
         try {
-            SecretKey key = Keys.hmacShaKeyFor(secret.getBytes(StandardCharsets.UTF_8));
             return Jwts.parser()
-                    .verifyWith(key)
+                    .verifyWith(getSigningKey())
                     .build()
                     .parseSignedClaims(token)
                     .getPayload()
@@ -57,13 +60,24 @@ public class JwtService {
     }
 
     public TokenMetadata refreshToken(String token) {
-        String email = validateToken(token);
-        if (email == null) return null;
+        Claims claims = getClaims(token); // Use the helper that parses the payload
 
-        return generateToken(email);
+        if (claims == null)
+            return null;
+
+        String email = claims.getSubject();
+
+        // Extract the roles list from the claims
+        @SuppressWarnings("unchecked")
+        List<String> rolesList = claims.get("roles", List.class);
+        Set<String> roles = new HashSet<>(rolesList);
+
+        // Generate a new token including those same roles
+        return generateToken(email, roles);
     }
 
     public String recoverToken(HttpServletRequest request) {
+
         if (request.getCookies() == null)
             return null;
 
@@ -72,5 +86,17 @@ public class JwtService {
                 .map(Cookie::getValue)
                 .findFirst()
                 .orElse(null);
+    }
+
+    public Claims getClaims(String token) {
+        try {
+            return Jwts.parser()
+                    .verifyWith(getSigningKey())
+                    .build()
+                    .parseSignedClaims(token)
+                    .getPayload();
+        } catch (Exception e) {
+            return null;
+        }
     }
 }

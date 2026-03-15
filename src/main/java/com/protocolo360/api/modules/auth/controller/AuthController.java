@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.protocolo360.api.modules.auth.dto.AuthResult;
 import com.protocolo360.api.modules.auth.dto.LoginRequest;
 import com.protocolo360.api.modules.auth.dto.LoginResponse;
 import com.protocolo360.api.modules.auth.dto.RegisterRequest;
@@ -50,11 +51,11 @@ public class AuthController {
             @Valid @RequestBody LoginRequest request,
             HttpServletResponse response) {
 
-        LoginResponse loginResponse = authService.authenticate(request);
+        AuthResult authResult = authService.authenticate(request);
 
-        addAuthCookie(response, loginResponse.email(), 24 * 60 * 60);
+        addAuthCookie(response, authResult.token(), 24 * 60 * 60);
 
-        return ResponseEntity.ok(ApiResponse.success(loginResponse, "User Logged In", 200));
+        return ResponseEntity.ok(ApiResponse.success(authResult.response(), "User Logged In", 200));
     }
 
     @PostMapping("/logout")
